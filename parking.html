@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Parking Pro</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+body{
+  margin:0;
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
+}
+
+#map{
+  height:40vh;
+  width:100%;
+}
+
+.card{
+  padding:20px;
+  text-align:center;
+}
+
+input{
+  padding:10px;
+  margin:5px;
+  border-radius:8px;
+  border:none;
+}
+
+button{
+  padding:10px 20px;
+  margin-top:10px;
+  border:none;
+  border-radius:10px;
+  background:#3b82f6;
+  color:white;
+  cursor:pointer;
+}
+
+#app{display:none;}
+
+.slots{
+  display:flex;
+  justify-content:center;
+  gap:15px;
+  margin-top:20px;
+}
+
+.slot{
+  width:90px;
+  height:130px;
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:30px;
+  transition:0.3s;
+}
+
+.free{background:#22c55e;}
+.occupied{background:#ef4444;}
+
+.status{
+  margin-top:15px;
+  font-size:20px;
+}
+
+.bar{
+  margin-top:10px;
+  height:10px;
+  background:#334155;
+  border-radius:10px;
+  overflow:hidden;
+}
+
+.fill{
+  height:100%;
+  background:#22c55e;
+  width:100%;
+  transition:0.4s;
+}
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div class="card">
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <h2>🔐 Login</h2>
+  <input id="user" placeholder="Username"><br>
+  <input id="pass" type="password" placeholder="Password"><br>
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- APP -->
+<div id="app">
+
+  <h2>🚗 Smart Parking</h2>
+
+  <div class="slots">
+    <div id="s1" class="slot free">🚗</div>
+    <div id="s2" class="slot free">🚗</div>
+    <div id="s3" class="slot free">🚗</div>
+  </div>
+
+  <div id="statusText" class="status">Loading...</div>
+
+  <div class="bar">
+    <div id="fillBar" class="fill"></div>
+  </div>
+
+  <button onclick="navigate()">🧭 Navigate to Parking</button>
+
+</div>
+
+</div>
+
+<audio id="sound">
+  <source src="https://www.soundjay.com/button/beep-07.wav">
+</audio>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+
+/* ================= MAP ================= */
+var parkingLat = 41.3275;
+var parkingLng = 19.8187;
+
+var map = L.map('map').setView([parkingLat, parkingLng], 15);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+}).addTo(map);
+
+var marker = L.marker([parkingLat, parkingLng]).addTo(map)
+  .bindPopup("Parking Location")
+  .openPopup();
+
+/* ================= LOGIN ================= */
+function login(){
+  if(user.value==="admin" && pass.value==="1234"){
+    loginBox.style.display="none";
+    app.style.display="block";
+  } else {
+    alert("Wrong login");
+  }
+}
+
+/* ================= NAVIGATION ================= */
+function navigate(){
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(function(pos){
+
+      let userLat = pos.coords.latitude;
+      let userLng = pos.coords.longitude;
+
+      let url = `https://www.google.com/maps/dir/${userLat},${userLng}/${parkingLat},${parkingLng}`;
+
+      window.open(url,"_blank");
+
+    }, function(){
+      alert("Lejo location access");
+    });
+  } else {
+    alert("GPS not supported");
+  }
+}
+
+/* ================= DATA ================= */
+let wasFull=false;
+
+function updateSlot(id,val){
+  document.getElementById(id).className =
+    "slot " + (val==1?"occupied":"free");
+}
+
+async function loadData(){
+  try{
+    let res=await fetch("http://localhost:3000/data");
+    let d=await res.json();
+
+    updateSlot("s1",d.s1);
+    updateSlot("s2",d.s2);
+    updateSlot("s3",d.s3);
+
+    let free=3-(d.s1+d.s2+d.s3);
+
+    statusText.innerHTML =
+      free===0?"FULL ❌":free+" vende bosh ✅";
+
+    fillBar.style.width=(free/3*100)+"%";
+
+    if(free===0 && !wasFull){
+      sound.play();
+      wasFull=true;
+    }
+    if(free>0) wasFull=false;
+
+    /* MAP COLOR */
+    if(free===0){
+      marker.setIcon(new L.Icon({
+        iconUrl:"https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+        iconSize:[32,32]
+      }));
+    } else {
+      marker.setIcon(new L.Icon({
+        iconUrl:"https://maps.google.com/mapfiles/ms/icons/green-dot.png",
+        iconSize:[32,32]
+      }));
+    }
+
+  }catch{
+    statusText.innerHTML="No connection";
+  }
+}
+
+setInterval(loadData,1000);
+
+</script>
+
+</body>
+</html>
