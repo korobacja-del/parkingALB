@@ -1,146 +1,101 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Servo.h>
-#include <SoftwareSerial.h>
 
 #define SS_PIN 10
 #define RST_PIN 9
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);
-Servo myServo;
+MFRC522 rfid(SS_PIN, RST_PIN);
+Servo gate;
 
-// Bluetooth HC-05
-SoftwareSerial BT(7, 8); // RX, TX
-
-// Pins
+// pins
+const int irEnter = 2;
+const int irExit  = 6;
 const int servoPin = 3;
-const int ir1 = 2; // Hyrje
-const int ir2 = 6; // Dalje
 
-// UID i autorizuar
-byte authorizedUID[4] = {0x2E, 0x0F, 0x12, 0x07};
+// authorized card
+byte allowedUID[4] = {0x2E, 0x0F, 0x12, 0x07};
 
 int cars = 0;
 const int maxCars = 3;
 
 void setup() {
   Serial.begin(9600);
-  BT.begin(9600);
-
   SPI.begin();
-  mfrc522.PCD_Init();
+  rfid.PCD_Init();
 
-  myServo.attach(servoPin);
-  
-  pinMode(ir1, INPUT_PULLUP);
-  pinMode(ir2, INPUT_PULLUP);
+  gate.attach(servoPin);
 
-  closeGate(); 
-  Serial.println("Sistemi u ndez. Parkimi bosh.");
+  pinMode(irEnter, INPUT_PULLUP);
+  pinMode(irExit, INPUT_PULLUP);
 
-  sendStatus();
+  closeGate();
+
+  sendData();
 }
 
 void loop() {
 
-  // -------- DALJA --------
-  if (digitalRead(ir2) == LOW) {
+  // EXIT
+  if (digitalRead(irExit) == LOW) {
     delay(50);
-    if (digitalRead(ir2) == LOW) {
-      Serial.println("Makina po del...");
+    if (digitalRead(irExit) == LOW) {
       openGate();
 
-      unsigned long timeout = millis();
-      while (digitalRead(ir2) == LOW && millis() - timeout < 5000) {
-        delay(10);
-      }
+      delay(2000);
 
       if (cars > 0) cars--;
 
-      Serial.print("Makina doli. Mbeten: ");
-      Serial.println(cars);
+      sendData();
 
-      sendStatus();
-
-      delay(3000);
+      delay(2000);
       closeGate();
-      delay(1000);
     }
   }
 
-  // -------- HYRJA (RFID) --------
-  if (!mfrc522.PICC_IsNewCardPresent()) return;
-  if (!mfrc522.PICC_ReadCardSerial()) return;
+  // RFID ENTRY
+  if (!rfid.PICC_IsNewCardPresent()) return;
+  if (!rfid.PICC_ReadCardSerial()) return;
 
-  if (isAuthorized(mfrc522.uid.uidByte)) {
+  if (isAllowed(rfid.uid.uidByte)) {
 
     if (cars < maxCars) {
-      Serial.println("Autorizuar! Hapet porta.");
       openGate();
 
-      unsigned long waitCar = millis();
-      bool detected = false;
+      delay(2000);
 
-      while (millis() - waitCar < 5000) {
-        if (digitalRead(ir1) == LOW) {
-          detected = true;
-          break;
-        }
-      }
-
-      if (detected) {
-        while (digitalRead(ir1) == LOW) {
-          delay(200);
-        }
-
+      if (digitalRead(irEnter) == LOW) {
         cars++;
-
-        Serial.print("Makina hyri. Total: ");
-        Serial.println(cars);
-
-        sendStatus();
-      } else {
-        Serial.println("Asnjë makinë nuk hyri.");
       }
 
+      sendData();
       closeGate();
 
     } else {
-      Serial.println("Parkimi PLOT!");
-      BT.println("FULL");
+      Serial.println("FULL");
     }
-
-  } else {
-    Serial.println("Kartë e panjohur!");
-    BT.println("DENIED");
   }
 
-  mfrc522.PICC_HaltA();
-  mfrc522.PCD_StopCrypto1();
+  rfid.PICC_HaltA();
 }
 
-// -------- FUNKSIONE --------
-
-bool isAuthorized(byte *uid) {
+bool isAllowed(byte *uid) {
   for (byte i = 0; i < 4; i++) {
-    if (uid[i] != authorizedUID[i]) return false;
+    if (uid[i] != allowedUID[i]) return false;
   }
   return true;
 }
 
 void openGate() {
-  myServo.write(80);
+  gate.write(90);
 }
 
 void closeGate() {
-  myServo.write(20);
+  gate.write(0);
 }
 
-// Dërgon statusin në Bluetooth
-void sendStatus() {
-  BT.print("CARS:");
-  BT.println(cars);
-
-  Serial.print("Dergohet me BT: ");
+// 🔥 Dërgon të dhëna në server
+void sendData() {
+  Serial.print("CARS:");
   Serial.println(cars);
 }
